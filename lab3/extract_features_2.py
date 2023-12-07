@@ -80,18 +80,23 @@ def create_ring_masks_with_growth_factor(image, num_rings, growth_rate = 0.8, in
 
     return masks
 
-def apply_adaptive_histogram_equalization(image, clip_limit = 1.5, tile_size = (8, 8)):
+def apply_histogram_equalization(image, type, clip_limit = 1.5, tile_size = (8, 8)):
     gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     blur_img = cv2.GaussianBlur(gray_image, (15, 15), 0)
 
-    clahe = cv2.createCLAHE(clipLimit = clip_limit, 
-                            tileGridSize = tile_size)
-    equalized_image = clahe.apply(blur_img)
+    if type == 'local':
+        clahe = cv2.createCLAHE(clipLimit = clip_limit, 
+                                tileGridSize = tile_size)
+        equalized_image = clahe.apply(blur_img)
+    elif type == 'global':
+        equalized_image = cv2.equalizeHist(blur_img)
+    else:
+        raise Exception(f"Available types are: 'local', 'global'. Entered {type}")
     
     return equalized_image
 
-def calculate_gradient(image, kernel_size = 3):
-    equalized_img = apply_adaptive_histogram_equalization(image, tile_size = (3, 3))
+def calculate_gradient(image, type, kernel_size = 3):
+    equalized_img = apply_histogram_equalization(image, type, tile_size = (3, 3))
     # Compute gradient using Sobel operators
     gradient_x = cv2.Sobel(equalized_img, cv2.CV_64F, 1, 0, ksize = kernel_size)
     gradient_y = cv2.Sobel(equalized_img, cv2.CV_64F, 0, 1, ksize = kernel_size)
@@ -102,16 +107,9 @@ def calculate_gradient(image, kernel_size = 3):
 
     return gradient_magnitude, gradient_orientation
 
-def crop_coins_from_background(img_file_name, kernel_size = 3):
+def crop_coins_from_background(img_file_name, type = 'local', kernel_size = 3):
     image = cv2.imread(img_file_name)
-    equalized_img = apply_adaptive_histogram_equalization(image, tile_size = (3, 3))
-
-    # Compute gradient using Sobel operators
-    gradient_x = cv2.Sobel(equalized_img, cv2.CV_64F, 1, 0, ksize = kernel_size)
-    gradient_y = cv2.Sobel(equalized_img, cv2.CV_64F, 0, 1, ksize = kernel_size)
-
-    # Compute gradient magnitude and orientation
-    gradient_magnitude = np.sqrt(gradient_x**2 + gradient_y**2)
+    gradient_magnitude, _ = calculate_gradient(image, type, kernel_size = kernel_size)
 
     percentage_threshold = 0.1
     absolute_threshold = percentage_threshold * np.max(gradient_magnitude)
@@ -121,7 +119,7 @@ def crop_coins_from_background(img_file_name, kernel_size = 3):
 
     cropped_objects = []
     min_area_threshold = 1000
-    len_contours = len(cropped_objects)
+    len_contours = len(contours)
 
     valid_contours = []
     for contour in contours:
@@ -131,9 +129,9 @@ def crop_coins_from_background(img_file_name, kernel_size = 3):
     
     valid_contours_len = len(valid_contours)
     if valid_contours_len > 15:
-        raise Exception(f"Detected {len(valid_contours)} [TOO MANY, FAILED]")
+        raise Exception(f"Detected valid coins {valid_contours_len}/{len_contours} [TOO MANY, FAILED]")
 
-
+    print(f"Total {len_contours} coins detected. Valid {valid_contours_len} coins detected.")
     for i, contour in enumerate(valid_contours):
         mask = np.zeros_like(edges)
         cv2.drawContours(mask, [contour], 0, (255), thickness = cv2.FILLED)
@@ -148,9 +146,9 @@ def crop_coins_from_background(img_file_name, kernel_size = 3):
 
     return cropped_objects
 
-def extract_shape_features(image, coin_features_df, ind):
+def extract_shape_features(image, coin_features_df, ind, type = 'local'):
     num_rings = 5
-    gradient_magnitude, gradient_orientation = calculate_gradient(image, kernel_size=3)
+    gradient_magnitude, gradient_orientation = calculate_gradient(image, type, kernel_size = 3)
     color_features = extract_color_features(image)
     ring_masks = create_ring_masks_with_growth_factor(image, num_rings, growth_rate = 0.8, inner_outer_ratio = 0.5)
 
@@ -177,7 +175,7 @@ def extract_shape_features(image, coin_features_df, ind):
     
     for i, ring_mask in enumerate(ring_masks):
         cropped = cv2.bitwise_and(image, image, mask = ring_mask[:, :, 0])
-        ring_gradient_magnitude, ring_gradient_orientation = calculate_gradient(cropped, kernel_size=3)
+        ring_gradient_magnitude, ring_gradient_orientation = calculate_gradient(cropped, type, kernel_size = 3)
         ring_color_features = extract_color_features(cropped)
 
         ring_label = f'ring_{i + 1}'
