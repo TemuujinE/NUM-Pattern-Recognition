@@ -77,8 +77,33 @@ def create_ring_masks_with_growth_factor(image, num_rings, growth_rate = 0.8, in
         cv2.circle(mask, center, radius_inner, (0, 0, 0), thickness = -1)
 
         masks.append(mask)
-
+    
     return masks
+
+
+def clf(x):
+    pred_class = "Cents"
+    if x['ring_1_s_kurtosis'] <= 0.887:
+        if x['ring_3_h_std'] <= 50.993:
+            if x['ring_3_s_kurtosis'] <= -0.461:
+                pred_class = "Nickels"
+            else:
+                pred_class = "Quarters"
+        else:
+            if x['ring_2_s_std'] <= 52.097:
+                pred_class = "Quarters"
+            else:
+                pred_class = "Cents"
+    else:
+        if x['ring_2_v_kurtosis'] <= -1.311:
+            pred_class = "Nickels"
+            if x['ring_4_magnitude_median'] <= 0.707:
+                pred_class = "Quarters"
+            else:
+                pred_class = "Cents"
+    
+    return pred_class
+    
 
 def apply_histogram_equalization(image, type, clip_limit = 1.5, tile_size = (8, 8)):
     gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)

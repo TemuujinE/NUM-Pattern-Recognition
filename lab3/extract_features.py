@@ -80,6 +80,25 @@ def create_ring_masks_with_growth_factor(image, num_rings, growth_rate = 0.8, in
 
     return masks
 
+
+def lab_threshold(image_path, lower_bound = np.array([0, 0, 0]), upper_bound = np.array([255, 255, 255])):
+    image = cv2.imread(image_path)
+    lab_img = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+
+    mask = cv2.inRange(lab_img, lower_bound, upper_bound)
+    result = cv2.bitwise_and(image, image, mask = mask)
+
+    return result
+
+def hsl_threshold(image_path, lower_bound = np.array([0, 0, 0]), upper_bound = np.array([179, 255, 100])):
+    image = cv2.imread(image_path)
+    hsl_img = cv2.cvtColor(image, cv2.COLOR_BGR2HLS)
+
+    mask = cv2.inRange(hsl_img, lower_bound, upper_bound)
+    result = cv2.bitwise_and(image, image, mask = mask)
+
+    return result
+
 def apply_adaptive_histogram_equalization(image, clip_limit = 1.5, tile_size = (8, 8)):
     gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     blur_img = cv2.GaussianBlur(gray_image, (15, 15), 0)
@@ -102,8 +121,21 @@ def calculate_gradient(image, kernel_size = 3):
 
     return gradient_magnitude, gradient_orientation
 
-def crop_coins_from_background(img_file_name, kernel_size = 3):
-    image = cv2.imread(img_file_name)
+
+def crop_coins_from_background(img_file_name, color_threshold_method = None, kernel_size = 3):
+    if color_threshold_method is None:
+        image = cv2.imread(img_file_name)
+    elif color_threshold_method == 'lab':
+        image = lab_threshold(img_file_name, 
+                              lower_bound = np.array([0, 0, 0]), 
+                              upper_bound = np.array([255, 255, 255]))
+    elif color_threshold_method == 'hsl':
+        image = hsl_threshold(img_file_name, 
+                              lower_bound = np.array([0, 0, 0]), 
+                              upper_bound = np.array([179, 255, 100]))
+    else:
+        raise ValueError("Unsupported color space")
+
     equalized_img = apply_adaptive_histogram_equalization(image, tile_size = (3, 3))
 
     # Compute gradient using Sobel operators
@@ -131,7 +163,7 @@ def crop_coins_from_background(img_file_name, kernel_size = 3):
     
     valid_contours_len = len(valid_contours)
     if valid_contours_len > 15:
-        raise Exception(f"Detected {len(valid_contours)} [TOO MANY, FAILED]")
+        raise Exception(f"Detected valid coins {valid_contours_len}/{len_contours} [TOO MANY, FAILED]")
 
 
     for i, contour in enumerate(valid_contours):
